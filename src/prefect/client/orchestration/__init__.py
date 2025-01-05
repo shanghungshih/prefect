@@ -1,5 +1,7 @@
 import asyncio
+
 import base64
+import certifi
 import datetime
 import ssl
 import warnings
@@ -9,10 +11,8 @@ from logging import Logger
 from typing import TYPE_CHECKING, Any, Literal, NoReturn, Optional, Union, overload
 from uuid import UUID, uuid4
 
-import certifi
 import httpcore
 import httpx
-import pendulum
 import pydantic
 from asgi_lifespan import LifespanManager
 from packaging import version
@@ -110,8 +110,7 @@ from prefect.client.schemas.sorting import (
     FlowSort,
     TaskRunSort,
 )
-from prefect.events import filters
-from prefect.events.schemas.automations import Automation, AutomationCore
+
 from prefect.logging import get_logger
 from prefect.settings import (
     PREFECT_API_AUTH_STRING,
@@ -128,7 +127,7 @@ from prefect.settings import (
     PREFECT_TESTING_UNIT_TEST_MODE,
     get_current_settings,
 )
-from prefect.types import KeyValueLabelsField
+from prefect.types import DateTime, KeyValueLabelsField
 
 if TYPE_CHECKING:
     from prefect.flows import Flow as FlowObject
@@ -885,7 +884,7 @@ class PrefectClient(
             List[FlowRun]: a list of FlowRun objects read from the queue
         """
         if scheduled_before is None:
-            scheduled_before = pendulum.now("UTC")
+            scheduled_before = DateTime.now("UTC")
 
         try:
             response = await self._client.post(
