@@ -766,6 +766,18 @@ class BaseWorker(abc.ABC):
             try:
                 if self._limiter:
                     self._limiter.acquire_on_behalf_of_nowait(flow_run.id)
+            except RuntimeError as exc:
+                if (
+                    "this borrower is already holding one of this CapacityLimiter's tokens"
+                    in str(exc)
+                ):
+                    self._logger.warning(
+                        f"Duplicate submission of flow run '{flow_run.id}' detected. Runner"
+                        " will not re-submit flow run."
+                    )
+                    continue
+                else:
+                    raise
             except anyio.WouldBlock:
                 self._logger.info(
                     f"Flow run limit reached; {self._limiter.borrowed_tokens} flow runs"
