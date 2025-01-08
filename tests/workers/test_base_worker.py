@@ -2119,3 +2119,24 @@ async def test_worker_gives_labels_to_flow_runs_when_using_cloud_api(
 
     for key, value in expected_labels.items():
         assert flow_run.labels[key] == value
+
+
+async def test_base_worker_does_not_raise_on_duplicate_submission(
+    prefect_client: PrefectClient,
+    worker_deployment_wq1,
+    work_pool,
+):
+    """
+    Regression test for https://github.com/PrefectHQ/prefect/issues/11093
+    The runner has a race condition where it can try to borrow a limit slot
+    that it already has. This test ensures that the runner does not raise
+    an exception in this case.
+    """
+    async with WorkerTestImpl(work_pool_name=work_pool.name, limit=50) as worker:
+        flow_run = await prefect_client.create_flow_run_from_deployment(
+            deployment_id=worker_deployment_wq1.id
+        )
+        # acquire the limit slot and then try to borrow it again
+        # during submission to simulate race condition
+        worker._acquire_limit_slot(flow_run.id)
+        await worker.get_and_submit_flow_runs()

@@ -855,6 +855,37 @@ class BaseWorker(abc.ABC):
             # heartbeat (or an appropriate warning will be logged)
             return []
 
+    def _acquire_limit_slot(self, flow_run_id: str) -> bool:
+        """
+        Enforces flow run limit set on worker.
+
+        Returns:
+            - bool: True if a slot was acquired, False otherwise.
+        """
+        try:
+            if self._limiter:
+                self._limiter.acquire_on_behalf_of_nowait(flow_run_id)
+            return True
+        except RuntimeError as exc:
+            if (
+                "this borrower is already holding one of this CapacityLimiter's tokens"
+                in str(exc)
+            ):
+                self._logger.warning(
+                    f"Duplicate submission of flow run '{flow_run_id}' detected. Worker"
+                    " will not re-submit flow run."
+                )
+                return False
+            else:
+                raise
+        except anyio.WouldBlock:
+            self._logger.info(
+                f"Flow run limit reached; {self._limiter.borrowed_tokens} flow runs"
+                " in progress. You can control this limit by passing a `limit` value"
+                " to `serve` or adjusting the PREFECT_RUNNER_PROCESS_LIMIT setting."
+            )
+            return False
+
     async def _submit_scheduled_flow_runs(
         self, flow_run_response: List["WorkerFlowRunResponse"]
     ) -> List["FlowRun"]:
@@ -867,16 +898,8 @@ class BaseWorker(abc.ABC):
         for flow_run in submittable_flow_runs:
             if flow_run.id in self._submitting_flow_run_ids:
                 continue
-            try:
-                if self._limiter:
-                    self._limiter.acquire_on_behalf_of_nowait(flow_run.id)
-            except anyio.WouldBlock:
-                self._logger.info(
-                    f"Flow run limit reached; {self._limiter.borrowed_tokens} flow runs"
-                    " in progress."
-                )
-                break
-            else:
+
+            if self._acquire_limit_slot(flow_run.id):
                 run_logger = self.get_flow_run_logger(flow_run)
                 run_logger.info(
                     f"Worker '{self.name}' submitting flow run '{flow_run.id}'"
@@ -900,6 +923,8 @@ class BaseWorker(abc.ABC):
                     self._submit_run,
                     flow_run,
                 )
+            else:
+                break
 
         return list(
             filter(
