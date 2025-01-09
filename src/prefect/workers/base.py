@@ -760,6 +760,7 @@ class BaseWorker(abc.ABC):
         try:
             if self._limiter:
                 self._limiter.acquire_on_behalf_of_nowait(flow_run_id)
+                self._logger.debug("Limit slot acquired for flow run '%s'", flow_run_id)
             return True
         except RuntimeError as exc:
             if (
